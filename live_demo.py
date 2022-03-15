@@ -1,4 +1,6 @@
+from os import name
 import torch
+import argparse
 import cv2 as cv
 import numpy as np
 from time import time
@@ -75,15 +77,34 @@ def display_pred_in_cam(cap, image, target):
             
     cv.imshow('Mask Detection', image)
     
+def parsed_args():
+    parser = argparse.ArgumentParser(description = 'Video capturing and hyper-parameter tuning')
+    parser.add_argument('--vc', type = str,    default = str(CONFIG['video_cap']),   help = f"cv.videoCapture : 0, 1 or video path, ( default : {CONFIG['video_cap']} )")
+    parser.add_argument('--i',  type = float,  default = CONFIG['iou_threshold'],   help = f"iou threshold, should be in range 0.0 - 1.0 , ( default : {CONFIG['iou_threshold']} )")
+    parser.add_argument('--s',  type = float,  default = CONFIG['score_threshold'],   help = f"score threshold, should be in range 0.0 - 1.0, ( default : {CONFIG['score_threshold']} )")
+    parser.add_argument('--d',  type = str,    default = CONFIG['device'],   help = f"device to train, [cpu, cuda], ( default : {CONFIG['device']} )")
+    parser.add_argument('--t',  type = float,  default = CONFIG['time_to_wait'],   help = f"time to wait after capturing one frame in ms, ( default : {CONFIG['time_to_wait']} )")
+    parser.add_argument('--verbose', const = True, action = 'store_const', help = "if verbose , print out the predicted logs")
+    
+    return parser.parse_args()
+
 def main():
     H, W = (480, 480)
-    device = torch.device('cpu')
+    args = parsed_args()
+    print(args)
+    device = torch.device(args.d)
     model = load_model_optimizer('best_model.pth', device, False)
 
-    iou_threshold = 0.1
-    score_threshold = 0.60
+    iou_threshold = args.i
+    score_threshold = args.s
 
-    cap = cv.VideoCapture(0)
+    vc = args.vc
+    if vc == '0':
+        vc = 0
+    elif vc == '1':
+        vc = 1
+        
+    cap = cv.VideoCapture(vc)
     width = int(cap.get(cv.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv.CAP_PROP_FRAME_HEIGHT))
     frames = 0
@@ -103,11 +124,12 @@ def main():
         predictions  = predict_images(model, loader, device, iou_threshold)
         fpredictions = filter_predictions(predictions, score_threshold)
         
-        frames += 1
-        print(f' Frame ( {frames} ) prediction '.center(60, '='))
-        print()
-        print(fpredictions[0])
-        print()
+        if args.verbose:
+            frames += 1
+            print(f' Frame ( {frames} ) prediction '.center(60, '='))
+            print()
+            print(fpredictions[0])
+            print()
     
         image, target = transform(img_resized, fpredictions[0], (height, width))
         
@@ -116,12 +138,19 @@ def main():
         cv.putText(frame, f'fps : {fps}', (int(10), int(20) + 1), cv.FONT_HERSHEY_PLAIN, 1, (255, 255, 0), 1, cv.LINE_AA)
         display_pred_in_cam(cap, image, target)
         
-        if cv.waitKey(10) == ord('q'):
+        if cv.waitKey(args.t) == ord('q'):
             close_cam(cap)
             break
-        
-        
-        
+
+## default values         
+CONFIG = {
+    'device'          : 'cpu',
+    'iou_threshold'   : 0.1,
+    'score_threshold' : 0.60,
+    'video_cap'       : 0,
+    'time_to_wait'    : 10,
+} 
+
 main()
         
         
